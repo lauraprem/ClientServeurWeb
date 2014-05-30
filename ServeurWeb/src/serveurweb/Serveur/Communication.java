@@ -9,6 +9,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -29,7 +30,7 @@ public class Communication extends Thread {
     private Socket socket;
     private BufferedReader IN;
     private PrintWriter OUT;
-    private File fichier;
+    private String fichier;
 
     public Communication(Socket connexion) {
         socket = connexion;
@@ -46,7 +47,7 @@ public class Communication extends Thread {
 
         //Information
         System.out.println("Connecté : " + socket.toString());
-
+        
         try {
             // Ecoute du Client
             String data = recevoirDonnees();
@@ -55,7 +56,7 @@ public class Communication extends Thread {
             int code = traitementDonnees(data);
 
             // Reponse au Client
-            String[] dataAEnvoyer = creationReponse(code, "Testteeeeeeeeeeeeee");//Fichier
+            String[] dataAEnvoyer = creationReponse(code, fichier);
             envoyerDonnees(dataAEnvoyer);
 
             //   socket.close();
@@ -96,7 +97,7 @@ public class Communication extends Thread {
         String[] tabData = s.split(" ");
         if (tabData.length == 3) {
             if (tabData[0].equals("GET")) {
-                fichier = new File(tabData[1]);
+            fichier = getContenueFile(new File("./src/serveurweb/Serveur/test.html"));
                 return 200;
             }
             return 0;
@@ -172,4 +173,24 @@ public class Communication extends Thread {
         return str;
     }
 
+    public static String getContenueFile(File aFile) {
+        StringBuilder contents = new StringBuilder();
+
+        try {
+            BufferedReader input = new BufferedReader(new FileReader(aFile));
+            try {
+                String line = null;
+                while ((line = input.readLine()) != null) {
+                    contents.append(line);
+                    contents.append(System.getProperty("line.separator"));
+                }
+            } finally {
+                input.close();
+            }
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+
+        return contents.toString();
+    }
 }
