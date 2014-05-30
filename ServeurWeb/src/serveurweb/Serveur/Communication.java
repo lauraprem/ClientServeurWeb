@@ -5,14 +5,18 @@
  */
 package serveurweb.Serveur;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
+import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Locale;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,11 +27,18 @@ import java.util.logging.Logger;
 public class Communication extends Thread {
 
     private Socket socket;
-    private BufferedOutputStream outputStream;
-    private BufferedInputStream inputStream;
+    private BufferedReader IN;
+    private PrintWriter OUT;
+    private File fichier;
 
     public Communication(Socket connexion) {
         socket = connexion;
+        try {
+            IN = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            OUT = new PrintWriter(socket.getOutputStream());
+        } catch (IOException ex) {
+            Logger.getLogger(Communication.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     @Override
@@ -36,114 +47,129 @@ public class Communication extends Thread {
         //Information
         System.out.println("Connecté : " + socket.toString());
 
-        //    try {
-        while (true) {// tant que connection non close
-            try {
-                //Recuperation de la demande
-                /////////////////////////////////////////////////////////         InputStream is = socket.getInputStream();
-                //BufferedInputStream buff = new BufferedInputStream(is);
-                //DataInputStream dis = new DataInputStream(is);
+        try {
+            // Ecoute du Client
+            String data = recevoirDonnees();
 
-         //       message = is.read();
-                /*while (buff.available() != 0) {
-                 System.out.println(buff.read());
-                 }*/
-                /*String message = null;*/
-                // read until a single byte is available
-                //while (in.available() !=-1) {
-                // read the byte and convert the integer to character
-                //char c = (char) in.read();
-                // print the characters
-                //  System.out.println("Char: " + c);
-                //message = message + c;
-                //}
-                //in.close();
-                // Affichage de la demande
-                // System.out.println("Message : " + message);
-                /*byte[] by = new byte[1024];
-                 int j = 0;
-                 while ((j = in.read(by)) != -1) {
-                 String st = new String(by, 0, j);
-                 System.out.print(st);
-                 }*/
-    ///////////////////////////////////////            StringBuffer response = new StringBuffer();
-                //  try {
-                //BufferedInputStream buff = new BufferedInputStream(System.in);
-                /*          int in = 0;
-                 char inChar;
-                 while(in!= )
-              
-                
-                 in = buff.readline();
-                 inChar = (char) in;
-                 //buff.close();
-                 System.out.println("Message: " + response.toString());*/
-                /* } catch (IOException e) {
-                 System.out.println("Exception: " + e.getMessage());
-                 }*/
+            // Traitement des donnees recu
+            int code = traitementDonnees(data);
 
-                /*  } catch (IOException ex) {
-                 Logger.getLogger(Communication.class.getName()).log(Level.SEVERE, null, ex);
-                 }*/
-                //     }
-            } catch (Exception ex) {
-                Logger.getLogger(Communication.class.getName()).log(Level.SEVERE, null, ex);
-            }
+            // Reponse au Client
+            String[] dataAEnvoyer = creationReponse(code, "Testteeeeeeeeeeeeee");//Fichier
+            envoyerDonnees(dataAEnvoyer);
 
-            while (true) {
-                try {
-                    OutputStream o = socket.getOutputStream();
-                    outputStream = new BufferedOutputStream(o);
-                    InputStream i = socket.getInputStream();
-                    inputStream = new BufferedInputStream(i);
-             
-
-                Byte[] recu = RecevoirData();
-                String s = recu.toString();
-                System.out.println(s);
-                
-                   } catch (Exception e) {
-                    System.err.println("piou" + e.getMessage());
-                }
-            }
+            //   socket.close();
+        } catch (Exception e) {
+            System.out.println("erreur");
         }
     }
 
-    private Byte[] RecevoirData() {
-        ArrayList<Byte> recu = new ArrayList<>();
-        byte temp;
+    private String recevoirDonnees() {
+        String str = "";
         try {
-            while ((temp = (byte) inputStream.read()) != -1) {
-                recu.add(temp);
-            }
-        } catch (SocketTimeoutException e) {
-            System.err.println("le serveur ne répond pas" + e.getMessage());
+            str = IN.readLine();
         } catch (IOException ex) {
-            System.err.println(ex.getMessage());
+            Logger.getLogger(Communication.class.getName()).log(Level.SEVERE, null, ex);
         }
-
-        return (Byte[]) recu.toArray();
-
+        System.out.println("Message reçu : " + str);
+        return str;
     }
 
-    private void envoyerReq() {
-        String data = "GET http://www.univ-lyon1.fr/test.html";
-        System.out.println("sur le point d'envoyer");
-        try {
-            outputStream.write(data.getBytes());
-        } catch (IOException ex) {
-            System.err.println(ex.getMessage());
+    private void envoyerDonnees(String[] s) {
+        for (int i = 0; i < s.length; i++) {
+            OUT.println(s[i]);
         }
-        System.out.println("envoyé");
+        OUT.flush();
     }
 
     private void fermerConnexion() {
         try {
-            inputStream.close();
-            outputStream.close();
+            IN.close();
+            OUT.close();
             socket.close();
         } catch (IOException ex) {
             System.out.println(ex.getMessage());
         }
     }
+
+    private int traitementDonnees(String s) {
+        String[] tabData = s.split(" ");
+        if (tabData.length == 3) {
+            if (tabData[0].equals("GET")) {
+                fichier = new File(tabData[1]);
+                return 200;
+            }
+            return 0;
+        }
+        return 400;
+    }
+
+    public static byte[] recuperationFichier(String nomFichier) {
+        try {
+            FileInputStream f = new FileInputStream(nomFichier);
+            int size = 1024, i, j;
+            boolean loop = true;
+            int lastSize = 0;
+            byte[] file;
+            byte[] temp = new byte[size];
+            ArrayList<byte[]> tempList = new ArrayList<>();
+            do {
+                lastSize = f.read(temp);
+                if (lastSize < size) {
+                    loop = false;
+                } else {
+                    tempList.add(temp);
+                }
+            } while (loop);
+            file = new byte[size * tempList.size() + lastSize];
+            for (i = 0; i < tempList.size(); i++) {
+                for (j = 0; j < size; j++) {
+                    file[i * tempList.size() + j] = tempList.get(i)[j];
+                }
+            }
+            for (j = 0; j < lastSize; j++) {
+                file[i * tempList.size() + j] = temp[j];
+            }
+            return file;
+        } catch (FileNotFoundException ex) {
+            return null;// 404
+        } catch (IOException ex) {
+            return null;
+        }
+    }
+
+    private String getNomCode(int code) {
+        String str;
+        switch (code) {
+            case 200:
+                str = "OK";
+                break;
+            case 404:
+                str = "File not found";
+                break;
+            case 400:
+                str = "Bad Request";
+                break;
+            default:
+                str = "Bad Request";
+        }
+
+        return str;
+    }
+
+    public String[] creationReponse(int code, String message) {
+        DateFormat DateFormatFR = DateFormat.getDateTimeInstance(DateFormat.FULL, DateFormat.FULL, new Locale("FR", "fr"));
+        String[] str = new String[8];
+        str[0] = "HTTP/1.1 " + code + " " + getNomCode(code);
+        str[1] = "Date: " + DateFormatFR.format(new Date());
+        str[2] = "Server: CorinneLaura";
+        str[3] = "Last-modified: " + DateFormatFR.format(new Date());
+        str[4] = "Content-Length: " + message.length();
+        str[5] = "Content-Type: text/html";
+        str[6] = "";
+        str[7] = message;
+
+        return str;
+    }
+
 }

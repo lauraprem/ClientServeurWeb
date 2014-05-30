@@ -10,7 +10,7 @@ package serveurweb.Serveur;
  *
  * @author Corinne
  */
-public class ServeurWEB {
+public class MainServeurWEB {
 
     /**
      * @param args the command line arguments

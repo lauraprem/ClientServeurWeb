@@ -14,14 +14,10 @@ public class Serveur extends Thread {
     private ServerSocket socketServeur;
     private int portServeur;
     private int SO_TIMEOUT;
-
-    // Taille des entêtes ?????????????????,
-    //private final static int HEADER_SIZE = 4;
-    // Taille d'un bloc de données
-    // private final static int BLOCK_SIZE = 512;
+    
     // CONSTRUCTEUR
     public Serveur() {
-        portServeur = 80;
+        portServeur = 8080;
         SO_TIMEOUT = 180000; // 3 minutes
 
         initSocketServeur();
@@ -30,16 +26,14 @@ public class Serveur extends Thread {
     // METHODES
     public void initSocketServeur() {
         try {
-            socketServeur = new ServerSocket(80, 6);
+            socketServeur = new ServerSocket(portServeur, 6);// nombre maximum de client connecté
         } catch (IOException ex) {
             System.err.println("Port déjà occupé : " + ex.getMessage());
         }
-
     }
 
     public void initSocket() {
         try {
-
             socketServeur.setSoTimeout(SO_TIMEOUT);
         } catch (IOException ex) {
             System.err.println("Port déjà occupé : " + ex.getMessage());
@@ -52,6 +46,7 @@ public class Serveur extends Thread {
         while (true) {
             try {
                 Socket connexion;
+                // Attente de demande de connexion
                 connexion = socketServeur.accept();
 
                 // Création d'une communication
