@@ -10,20 +10,18 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 public class Client {
 
     private Socket socket;
     private InetAddress server;
     private int port;
+    private int timeOut;
     private BufferedOutputStream out;
     private BufferedInputStream in;
 
@@ -31,6 +29,7 @@ public class Client {
         try {
             server = s;
             port = p;
+            timeOut = 1500;
 
         } catch (Exception e) {
             System.err.println("piou" + e.getMessage());
@@ -46,7 +45,7 @@ public class Client {
     public int initSocket() {
         try {
             socket = new Socket(server, port);
-            socket.setSoTimeout(1000);
+            socket.setSoTimeout(timeOut);
             OutputStream o = socket.getOutputStream();
             out = new BufferedOutputStream(o);
             InputStream i = socket.getInputStream();
@@ -82,10 +81,15 @@ public class Client {
 
     private void envoyerReqGet(String site) {
         String data = "GET " + site + " HTTP/1.1";
-
+        byte[] envoi = new byte[data.length()];
+        envoi = data.getBytes();
         System.out.println("sur le point d'envoyer");
         try {
-            out.write(data.getBytes());
+            for (int i = 0 ; i<data.length() ; i++)
+            {
+                out.write(envoi[i]);
+            }
+          //  out.write(data.getBytes());
         } catch (IOException ex) {
             System.err.println(ex.getMessage());
         } catch (Exception ex) {
