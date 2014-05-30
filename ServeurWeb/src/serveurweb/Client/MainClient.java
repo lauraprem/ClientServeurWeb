@@ -4,7 +4,7 @@
  * and open the template in the editor.
  */
 
-package serveurweb;
+package serveurweb.Client;
 
 import java.net.InetAddress;
 import java.net.SocketException;
@@ -16,17 +16,14 @@ public class MainClient {
         Client c;
         try 
         {
-            InetAddress server =  InetAddress.getByName("169.254.182.165");
+            InetAddress server =  InetAddress.getByName("127.0.0.1");
             int port = 80;
             c = new Client(server,port);
             c.run();
         } catch (UnknownHostException ex) 
         {
             System.err.println(ex.getMessage());
-        } catch (SocketException ex)
-        {
-            System.err.println(ex.getMessage());
-        }
+        } 
         
         
     }
