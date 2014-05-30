@@ -82,7 +82,7 @@ public class ClientTest {
     }
 
     private void envoyerReq() {
-        String data = "GET http://www.univ-lyon1.fr/test.html HTTP1.0" + "\r\n\r";
+        String data = "GET / HTTP1.0" + "\r\n\r";
         try {
             outToServer.write(data.getBytes());
             //out.write(data.getBytes());

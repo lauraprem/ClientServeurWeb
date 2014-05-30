@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package serveurweb.Serveur;
 
 import java.io.BufferedReader;
@@ -31,6 +26,7 @@ public class Communication extends Thread {
     private BufferedReader IN;
     private PrintWriter OUT;
     private String fichier;
+    private File fichier1;
 
     public Communication(Socket connexion) {
         socket = connexion;
@@ -47,7 +43,7 @@ public class Communication extends Thread {
 
         //Information
         System.out.println("Connecté : " + socket.toString());
-        
+
         try {
             // Ecoute du Client
             String data = recevoirDonnees();
@@ -97,7 +93,10 @@ public class Communication extends Thread {
         String[] tabData = s.split(" ");
         if (tabData.length == 3) {
             if (tabData[0].equals("GET")) {
-            fichier = getContenueFile(new File("./src/serveurweb/Serveur/test.html"));
+                if (tabData[1].equals("/")) {
+                    fichier1 = new File("./src/serveurweb/Serveur/test.html");
+                    fichier = getContenueFile(fichier1);
+                }
                 return 200;
             }
             return 0;
@@ -164,7 +163,7 @@ public class Communication extends Thread {
         str[0] = "HTTP/1.1 " + code + " " + getNomCode(code);
         str[1] = "Date: " + DateFormatFR.format(new Date());
         str[2] = "Server: CorinneLaura";
-        str[3] = "Last-modified: " + DateFormatFR.format(new Date());
+        str[3] = "Last-modified: " + DateFormatFR.format(new Date(fichier1.lastModified()));
         str[4] = "Content-Length: " + message.length();
         str[5] = "Content-Type: text/html";
         str[6] = "";
