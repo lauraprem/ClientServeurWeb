@@ -1,18 +1,21 @@
 package serveurweb.Serveur;
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.Writer;
 import java.net.Socket;
-import java.text.DateFormat;
-import java.util.ArrayList;
+import java.net.SocketException;
 import java.util.Date;
-import java.util.Locale;
+import java.util.StringTokenizer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -23,19 +26,31 @@ import java.util.logging.Logger;
 public class Communication extends Thread {
 
     private Socket socket;
-    private BufferedReader IN;
-    private PrintWriter OUT;
-    private String fichier;
-    private File fichier1;
+    private int SO_TIMEOUT;
+    private BufferedReader in;
+    private PrintWriter out;
+    private BufferedOutputStream outDonnees;
+
+    //Root est le chemin courrent
+    private static final File SERVEUR_ROOT = new File("./src/serveurweb/Serveur/Contenue/");
+    private static final String FICHIER_DEFAUT = "fichierRacine.html";
+
+    // client
+    private String commande;
+    private String fichierDemande;
+    private byte[] fichierDonnees;
 
     public Communication(Socket connexion) {
+        SO_TIMEOUT = 180000; // 3 minutes
         socket = connexion;
         try {
-            IN = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            OUT = new PrintWriter(socket.getOutputStream());
-        } catch (IOException ex) {
-            Logger.getLogger(Communication.class.getName()).log(Level.SEVERE, null, ex);
+            socket.setSoTimeout(SO_TIMEOUT);
+        } catch (SocketException ex) {
+            System.out.println("Erreur socket time-out : " + ex.getMessage());
         }
+        in = null;
+        out = null;
+        outDonnees = null;
     }
 
     @Override
@@ -45,151 +60,232 @@ public class Communication extends Thread {
         System.out.println("Connecté : " + socket.toString());
 
         try {
-            // Ecoute du Client
-            String data = recevoirDonnees();
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream());
+            outDonnees = new BufferedOutputStream(socket.getOutputStream());
 
-            // Traitement des donnees recu
-            int code = traitementDonnees(data);
+            //recupere la premiere ligne de la requete du client
+            String ligne = in.readLine();
 
-            // Reponse au Client
-            String[] dataAEnvoyer = creationReponse(code, fichier);
-            envoyerDonnees(dataAEnvoyer);
+            DecoupageRequeteClient(ligne);
 
-            //   socket.close();
-        } catch (Exception e) {
-            System.out.println("erreur");
-        }
-    }
-
-    private String recevoirDonnees() {
-        String str = "";
-        try {
-            str = IN.readLine();
-        } catch (IOException ex) {
-            Logger.getLogger(Communication.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        System.out.println("Message reçu : " + str);
-        return str;
-    }
-
-    private void envoyerDonnees(String[] s) {
-        for (int i = 0; i < s.length; i++) {
-            OUT.println(s[i]);
-        }
-        OUT.flush();
-    }
-
-    private void fermerConnexion() {
-        try {
-            IN.close();
-            OUT.close();
-            socket.close();
-        } catch (IOException ex) {
-            System.out.println(ex.getMessage());
-        }
-    }
-
-    private int traitementDonnees(String s) {
-        String[] tabData = s.split(" ");
-        if (tabData.length == 3) {
-            if (tabData[0].equals("GET")) {
-                if (tabData[1].equals("/")) {
-                    fichier1 = new File("./src/serveurweb/Serveur/test.html");
-                    fichier = getContenueFile(fichier1);
-                }
-                return 200;
-            }
-            return 0;
-        }
-        return 400;
-    }
-
-    public static byte[] recuperationFichier(String nomFichier) {
-        try {
-            FileInputStream f = new FileInputStream(nomFichier);
-            int size = 1024, i, j;
-            boolean loop = true;
-            int lastSize = 0;
-            byte[] file;
-            byte[] temp = new byte[size];
-            ArrayList<byte[]> tempList = new ArrayList<>();
-            do {
-                lastSize = f.read(temp);
-                if (lastSize < size) {
-                    loop = false;
-                } else {
-                    tempList.add(temp);
-                }
-            } while (loop);
-            file = new byte[size * tempList.size() + lastSize];
-            for (i = 0; i < tempList.size(); i++) {
-                for (j = 0; j < size; j++) {
-                    file[i * tempList.size() + j] = tempList.get(i)[j];
+            //Verification que la commande existe
+            //Il n'y a que les requetes GET qui est implemente
+            if (!commande.equals("GET")) {
+                erreurCommande();
+            } else {
+                // Traitement de la requete
+                //Si la commande est GET, on envoie le contenue du fichier
+                if (commande.equals("GET")) {
+                    int code = recuperationFichier();
+                    switch (code) {
+                        case 200:
+                            envoiFichier();
+                            break;
+                        case 404:
+                            erreurFichierNonTrouve();
+                            break;
+                        case 500:
+                            break;
+                    }
                 }
             }
-            for (j = 0; j < lastSize; j++) {
-                file[i * tempList.size() + j] = temp[j];
-            }
-            return file;
-        } catch (FileNotFoundException ex) {
-            return null;// 404
+
         } catch (IOException ex) {
-            return null;
+            System.out.println("Erreur : " + ex.getMessage());//500
+        } finally {
+            close(in);
+            close(out);
+            close(outDonnees);
+            close(socket);
         }
+        System.out.println("Deconnecté : " + socket.toString());
+    }
+
+    private void DecoupageRequeteClient(String ligne) {
+        if (ligne != null) {
+            //creer StringTokenizer pour parser la requete
+            StringTokenizer parse = new StringTokenizer(ligne);
+            //recupere la commande du client
+            commande = parse.nextToken().toUpperCase();
+            //recupere le fichier demande par le client
+            fichierDemande = parse.nextToken().toLowerCase();
+        }else{
+            commande = "";
+        }
+    }
+
+    private void erreurCommande() {
+        //Reponse au client : commande non implemente
+        int code = 501;
+        out.println("HTTP/1.0 " + getNomCode(code));
+        out.println("Server: Java HTTP Server CorinneLaura 1.0");
+        out.println("Date: " + new Date());
+        out.println("Content-Type: text/html");
+        out.println();
+        out.println("<HTML>");
+        out.println("<HEAD><TITLE>Not Implemented</TITLE>"
+                + "</HEAD>");
+        out.println("<BODY>");
+        out.println("<H2>" + getNomCode(code) + ": " + commande
+                + " method.</H2>");
+        out.println("</BODY></HTML>");
+        out.flush();
     }
 
     private String getNomCode(int code) {
         String str;
         switch (code) {
             case 200:
-                str = "OK";
+                str = code + " OK";
                 break;
             case 404:
-                str = "File not found";
+                str = code + " File Not Found";
                 break;
             case 400:
-                str = "Bad Request";
+                str = code + " Bad Request";
+                break;
+            case 501:
+                str = code + " Not Implemented";
+                break;
+            case 500:
+                str = code + " Internal Server Error";
                 break;
             default:
-                str = "Bad Request";
+                str = code + " Bad Request";
         }
 
         return str;
     }
 
-    public String[] creationReponse(int code, String message) {
-        DateFormat DateFormatFR = DateFormat.getDateTimeInstance(DateFormat.FULL, DateFormat.FULL, new Locale("FR", "fr"));
-        String[] str = new String[8];
-        str[0] = "HTTP/1.1 " + code + " " + getNomCode(code);
-        str[1] = "Date: " + DateFormatFR.format(new Date());
-        str[2] = "Server: CorinneLaura";
-        str[3] = "Last-modified: " + DateFormatFR.format(new Date(fichier1.lastModified()));
-        str[4] = "Content-Length: " + message.length();
-        str[5] = "Content-Type: text/html";
-        str[6] = "";
-        str[7] = message;
+    private int recuperationFichier() {
+        int code = 0;
+        if (fichierDemande.endsWith("/")) {
+            //file par defaut
+            fichierDemande += FICHIER_DEFAUT;
+        }
 
-        return str;
-    }
+        //Creer un fichier
+        File fichier = new File(SERVEUR_ROOT, fichierDemande);
 
-    public static String getContenueFile(File aFile) {
-        StringBuilder contents = new StringBuilder();
+        FileInputStream fileIn = null;
+        //creeer une liste de byte pour enregister les donnees du fichier
+        fichierDonnees = new byte[(int) fichier.length()];
 
         try {
-            BufferedReader input = new BufferedReader(new FileReader(aFile));
-            try {
-                String line = null;
-                while ((line = input.readLine()) != null) {
-                    contents.append(line);
-                    contents.append(System.getProperty("line.separator"));
-                }
-            } finally {
-                input.close();
-            }
+            //on ouvre le fichier et on le lit
+            fileIn = new FileInputStream(fichier);
+            fileIn.read(fichierDonnees);
+
+            close(fileIn); //close file input stream
+            return 200;
+        } catch (FileNotFoundException ex) {
+            return 404;
         } catch (IOException ex) {
-            ex.printStackTrace();
+            return 500;
+        }
+    }
+
+    /**
+     * getContentType returns le (MIME) content type qui correspond à
+     * l'extension du fichier.
+     *
+     * @param fileDemande File requested by client
+     */
+    public String getContentType(String fichierDemande) {
+        if (fichierDemande.endsWith(".htm")
+                || fichierDemande.endsWith(".html")) {
+            return "text/html";
+        } else if (fichierDemande.endsWith(".gif")) {
+            return "image/gif";
+        } else if (fichierDemande.endsWith(".jpg")
+                || fichierDemande.endsWith(".jpeg")) {
+            return "image/jpeg";
+        } else if (fichierDemande.endsWith(".class")
+                || fichierDemande.endsWith(".jar")) {
+            return "applicaton/octet-stream";
+        } else {
+            return "text/plain";
+        }
+    }
+
+    /**
+     * close method closes stream.
+     *
+     * @param stream
+     */
+    public void close(Object stream) {
+        if (stream == null) {
+            return;
         }
 
-        return contents.toString();
+        try {
+            if (stream instanceof Reader) {
+                ((Reader) stream).close();
+            } else if (stream instanceof Writer) {
+                ((Writer) stream).close();
+            } else if (stream instanceof InputStream) {
+                ((InputStream) stream).close();
+            } else if (stream instanceof OutputStream) {
+                ((OutputStream) stream).close();
+            } else if (stream instanceof Socket) {
+                ((Socket) stream).close();
+            } else {
+                System.err.println("Unable to close object: " + stream);
+            }
+        } catch (Exception e) {
+            System.err.println("Error closing stream: " + e);
+        }
+    }
+
+    /**
+     * Informe le client que le fichier demande n'existe pas
+     *
+     * @param out Client output stream
+     * @param file fichier demande par le client
+     */
+    private void envoiFichier() throws IOException {
+        int code = 200;
+        // Entete
+        out.println("HTTP/1.0 " + getNomCode(code));
+        out.println("Server: Java HTTP Server CorinneLaura 1.0");
+        out.println("Date: " + new Date());
+        out.println("Content-type: " + getContentType(fichierDemande));
+        out.println("Content-length: " + (int) fichierDonnees.length);
+        out.println(); //ligne blanche entre l'entête et le contenue
+        out.flush(); //flush les characteres (output stream buffer)
+
+        // Contenue
+        outDonnees.write(fichierDonnees, 0, (int) fichierDonnees.length); //ecrit le fichier
+        outDonnees.flush(); //flush binary
+    }
+
+    /**
+     * Informe le client que le fichier demande n'existe pas
+     *
+     * @param out Client output stream
+     * @param file fichier demande par le client
+     */
+    private void erreurFichierNonTrouve() {
+        int code = 404; // code erreur
+
+        //Enete
+        out.println("HTTP/1.0 " + getNomCode(code));
+        out.println("Server: Java HTTP Server CorinneLaura");
+        out.println("Date: " + new Date());
+        out.println("Content-Type: text/html");
+        out.println();
+
+        //Contenue
+        out.println("<HTML>");
+        out.println("<HEAD><TITLE>File Not Found</TITLE>"
+                + "</HEAD>");
+        out.println("<BODY>");
+        out.println("<H2>404 File Not Found: " + fichierDemande + "</H2>");
+        out.println("</BODY>");
+        out.println("</HTML>");
+
+        // envoi sur le flux
+        out.flush();
     }
 }

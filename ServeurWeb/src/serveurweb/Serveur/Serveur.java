@@ -13,13 +13,11 @@ public class Serveur extends Thread {
     // ATTRIBUTS
     private ServerSocket socketServeur;
     private int portServeur;
-    private int SO_TIMEOUT;
     
     // CONSTRUCTEUR
     public Serveur() {
         portServeur = 8080;
-        SO_TIMEOUT = 180000; // 3 minutes
-
+        
         initSocketServeur();
     }
 
@@ -30,15 +28,6 @@ public class Serveur extends Thread {
         } catch (IOException ex) {
             System.err.println("Port déjà occupé : " + ex.getMessage());
         }
-    }
-
-    public void initSocket() {
-        try {
-            socketServeur.setSoTimeout(SO_TIMEOUT);
-        } catch (IOException ex) {
-            System.err.println("Port déjà occupé : " + ex.getMessage());
-        }
-
     }
 
     @Override
