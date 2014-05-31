@@ -14,10 +14,10 @@ import java.io.Reader;
 import java.io.Writer;
 import java.net.Socket;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.util.Date;
+import java.util.NoSuchElementException;
 import java.util.StringTokenizer;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  *
@@ -31,17 +31,17 @@ public class Communication extends Thread {
     private PrintWriter out;
     private BufferedOutputStream outDonnees;
 
-    //Root est le chemin courrent
+    // Root est le chemin courrent
     private static final File SERVEUR_ROOT = new File("./src/serveurweb/Serveur/Contenue/");
     private static final String FICHIER_DEFAUT = "fichierRacine.html";
 
-    // client
+    // demande client
     private String commande;
     private String fichierDemande;
     private byte[] fichierDonnees;
 
     public Communication(Socket connexion) {
-        SO_TIMEOUT = 180000; // 3 minutes
+        SO_TIMEOUT = 60000; // 1 minute
         socket = connexion;
         try {
             socket.setSoTimeout(SO_TIMEOUT);
@@ -72,7 +72,11 @@ public class Communication extends Thread {
             //Verification que la commande existe
             //Il n'y a que les requetes GET qui est implemente
             if (!commande.equals("GET")) {
-                erreurCommande();
+                if (VerificationCommandeExiste(commande) == 200) {
+                    erreur(501);
+                } else {
+                    erreur(400);
+                }
             } else {
                 // Traitement de la requete
                 //Si la commande est GET, on envoie le contenue du fichier
@@ -86,13 +90,17 @@ public class Communication extends Thread {
                             erreurFichierNonTrouve();
                             break;
                         case 500:
+                            erreur(500);
                             break;
                     }
                 }
             }
-
+        } catch (SocketTimeoutException e) {
+            System.out.println("time_out dépassé : " + e.getMessage());
+            erreur(408);
         } catch (IOException ex) {
-            System.out.println("Erreur : " + ex.getMessage());//500
+            System.out.println("Erreur : " + ex.getMessage());
+            erreur(500);
         } finally {
             close(in);
             close(out);
@@ -102,29 +110,43 @@ public class Communication extends Thread {
         System.out.println("Deconnecté : " + socket.toString());
     }
 
+    /**
+     * Decoupe la requete client
+     *
+     * @param ligne ligne du client qui est lue sur le flux
+     */
     private void DecoupageRequeteClient(String ligne) {
-        if (ligne != null) {
-            //creer StringTokenizer pour parser la requete
-            StringTokenizer parse = new StringTokenizer(ligne);
-            //recupere la commande du client
-            commande = parse.nextToken().toUpperCase();
-            //recupere le fichier demande par le client
-            fichierDemande = parse.nextToken().toLowerCase();
-        }else{
-            commande = "";
+        try {
+            if (ligne != null) {
+                //creer StringTokenizer pour parser la requete
+                StringTokenizer parse = new StringTokenizer(ligne);
+                //recupere la commande du client
+                commande = parse.nextToken().toUpperCase();
+                //recupere le fichier demande par le client
+                fichierDemande = parse.nextToken().toLowerCase();
+            } else {
+                commande = "";
+            }
+        } catch (NoSuchElementException e) {
+            System.out.println("Erreur : " + e.getMessage());
         }
     }
 
-    private void erreurCommande() {
+    /**
+     * Envoi une erreur au client en fonction du status_code
+     *
+     * @param code status_code
+     */
+    private void erreur(int code) {
         //Reponse au client : commande non implemente
-        int code = 501;
         out.println("HTTP/1.0 " + getNomCode(code));
         out.println("Server: Java HTTP Server CorinneLaura 1.0");
         out.println("Date: " + new Date());
+        out.println("Connection: close");
         out.println("Content-Type: text/html");
         out.println();
         out.println("<HTML>");
-        out.println("<HEAD><TITLE>Not Implemented</TITLE>"
+        out.println("<HEAD><TITLE>" + getNomCode(code) + "</TITLE>"
                 + "</HEAD>");
         out.println("<BODY>");
         out.println("<H2>" + getNomCode(code) + ": " + commande
@@ -133,18 +155,30 @@ public class Communication extends Thread {
         out.flush();
     }
 
+    /**
+     * Retourne les Status_codes + Reason_phrases en fonction du status_code
+     *
+     * @param code status_code
+     * @return Status_codes + Reason_phrases
+     */
     private String getNomCode(int code) {
         String str;
         switch (code) {
+            // Success 2XX
             case 200:
                 str = code + " OK";
                 break;
+            // Erreur Client 4XX
             case 404:
                 str = code + " File Not Found";
                 break;
             case 400:
                 str = code + " Bad Request";
                 break;
+            case 408:
+                str = code + " Request Time-out";
+                break;
+            // Erreur serveur 5XX
             case 501:
                 str = code + " Not Implemented";
                 break;
@@ -158,6 +192,11 @@ public class Communication extends Thread {
         return str;
     }
 
+    /**
+     * recupere le fichier demandé par le client
+     *
+     * @return Status_codes
+     */
     private int recuperationFichier() {
         int code = 0;
         if (fichierDemande.endsWith("/")) {
@@ -187,10 +226,10 @@ public class Communication extends Thread {
     }
 
     /**
-     * getContentType returns le (MIME) content type qui correspond à
-     * l'extension du fichier.
+     * Retourne le (MIME) content type qui correspond à l'extension du fichier.
      *
-     * @param fileDemande File requested by client
+     * @param fichierDemande fichier demandé par le client
+     * @return MIME du fichier demandé
      */
     public String getContentType(String fichierDemande) {
         if (fichierDemande.endsWith(".htm")
@@ -210,15 +249,14 @@ public class Communication extends Thread {
     }
 
     /**
-     * close method closes stream.
+     * Ferme les flux.
      *
-     * @param stream
+     * @param stream flux qui va être fermé
      */
     public void close(Object stream) {
         if (stream == null) {
             return;
         }
-
         try {
             if (stream instanceof Reader) {
                 ((Reader) stream).close();
@@ -239,17 +277,15 @@ public class Communication extends Thread {
     }
 
     /**
-     * Informe le client que le fichier demande n'existe pas
-     *
-     * @param out Client output stream
-     * @param file fichier demande par le client
+     * Envoi le fichier
      */
     private void envoiFichier() throws IOException {
         int code = 200;
         // Entete
         out.println("HTTP/1.0 " + getNomCode(code));
-        out.println("Server: Java HTTP Server CorinneLaura 1.0");
         out.println("Date: " + new Date());
+        out.println("Server: Java HTTP Server CorinneLaura 1.0");
+        out.println("Connection: close");
         out.println("Content-type: " + getContentType(fichierDemande));
         out.println("Content-length: " + (int) fichierDonnees.length);
         out.println(); //ligne blanche entre l'entête et le contenue
@@ -262,9 +298,6 @@ public class Communication extends Thread {
 
     /**
      * Informe le client que le fichier demande n'existe pas
-     *
-     * @param out Client output stream
-     * @param file fichier demande par le client
      */
     private void erreurFichierNonTrouve() {
         int code = 404; // code erreur
@@ -273,6 +306,7 @@ public class Communication extends Thread {
         out.println("HTTP/1.0 " + getNomCode(code));
         out.println("Server: Java HTTP Server CorinneLaura");
         out.println("Date: " + new Date());
+        out.println("Connection: close");
         out.println("Content-Type: text/html");
         out.println();
 
@@ -281,11 +315,37 @@ public class Communication extends Thread {
         out.println("<HEAD><TITLE>File Not Found</TITLE>"
                 + "</HEAD>");
         out.println("<BODY>");
-        out.println("<H2>404 File Not Found: " + fichierDemande + "</H2>");
+        out.println("<H2>" + getNomCode(code) + ": " + fichierDemande + "</H2>");
         out.println("</BODY>");
         out.println("</HTML>");
 
         // envoi sur le flux
         out.flush();
+    }
+
+    /**
+     * Verifie si la commande existe
+     *
+     * @param commande
+     * @return status-codes
+     */
+    private int VerificationCommandeExiste(String commande) {
+        int code = 200;
+        switch (commande) {
+            case "GET":
+                break;
+            case "HEAD":
+                break;
+            case "POST":
+                break;
+            case "PUT":
+                break;
+            case "DELETE":
+                break;
+            default:
+                code = 400;
+                break;
+        }
+        return code;
     }
 }
