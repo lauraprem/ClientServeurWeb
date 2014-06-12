@@ -5,6 +5,7 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -66,6 +67,7 @@ public class Communication extends Thread {
 
             //recupere la premiere ligne de la requete du client
             String ligne = in.readLine();
+        System.out.println(ligne);
 
             DecoupageRequeteClient(ligne);
 
@@ -243,6 +245,8 @@ public class Communication extends Thread {
         } else if (fichierDemande.endsWith(".class")
                 || fichierDemande.endsWith(".jar")) {
             return "applicaton/octet-stream";
+        }else if(fichierDemande.endsWith(".pdf")){
+            return "application/pdf";
         } else {
             return "text/plain";
         }
@@ -286,7 +290,7 @@ public class Communication extends Thread {
         out.println("Date: " + new Date());
         out.println("Server: Java HTTP Server CorinneLaura 1.0");
         out.println("Connection: close");
-        out.println("Content-type: " + getContentType(fichierDemande));
+        out.println("Content-Type: "+ getContentType(fichierDemande));
         out.println("Content-length: " + (int) fichierDonnees.length);
         out.println(); //ligne blanche entre l'entête et le contenue
         out.flush(); //flush les characteres (output stream buffer)
